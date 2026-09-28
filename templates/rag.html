@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Индекс документов — чанки, эмбеддинги, две стратегии</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 1320px; margin: 20px auto; padding: 0 16px;
+           color:#111827; background:#fff; }
+    h1 { margin-bottom: 2px; font-size: 1.4rem; }
+    h2 { font-size: 1.02rem; margin: 0 0 8px; }
+    a { color:#2563eb; }
+    .idea { color:#4b5563; font-size:.86rem; margin-top:2px; line-height:1.45; }
+    .карточка { border:1px solid #e5e7eb; border-radius:8px; padding:12px 14px; margin:12px 0;
+                background:#fff; }
+    .ряд { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+    label { display:flex; flex-direction:column; font-size:.78rem; color:#374151; gap:3px; }
+    label.флажок { flex-direction:row; align-items:center; gap:5px; }
+    input, select { padding:6px 9px; font-size:.9rem; border:1px solid #d1d5db; border-radius:6px; }
+    input[type=number] { width:84px; }
+    button { padding:7px 14px; font-size:.9rem; border:1px solid #9ca3af; border-radius:6px;
+             background:#f9fafb; cursor:pointer; }
+    button.главная { background:#2563eb; color:#fff; border-color:#1d4ed8; }
+    button:disabled { opacity:.5; cursor:default; }
+    .плашка { display:inline-block; padding:3px 9px; border-radius:6px; font-size:.8rem; margin-right:6px; }
+    .плашка.ок { background:#ecfdf5; border:1px solid #10b981; }
+    .плашка.нет { background:#fef2f2; border:1px solid #dc2626; }
+    .мета { color:#6b7280; font-size:.78rem; }
+    table { border-collapse:collapse; width:100%; font-size:.82rem; }
+    th, td { border-bottom:1px solid #e5e7eb; padding:5px 7px; text-align:left; vertical-align:top; }
+    th { background:#f9fafb; font-weight:600; }
+    td.ч { text-align:right; font-variant-numeric: tabular-nums; }
+    .ход { height:10px; background:#e5e7eb; border-radius:5px; overflow:hidden; margin:6px 0 2px; }
+    .ход > div { height:100%; background:#2563eb; width:0; transition: width .3s; }
+    .две { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+    @media (max-width: 900px) { .две { grid-template-columns: 1fr; } }
+    .находка { border:1px solid #e5e7eb; border-left:4px solid #93c5fd; border-radius:6px;
+               padding:7px 9px; margin:7px 0; font-size:.84rem; }
+    .фикс .находка { border-left-color:#fbbf24; }
+    .находка .паспорт { font-size:.76rem; color:#374151; margin-bottom:4px; }
+    .находка .текст { white-space:pre-wrap; line-height:1.4; }
+    .находка .поперёк { color:#b45309; font-size:.74rem; }
+    .оценка { font-variant-numeric: tabular-nums; font-weight:600; }
+    code { font-size:.76rem; background:#f3f4f6; padding:1px 4px; border-radius:3px; }
+    .чанк-ид { cursor:pointer; text-decoration:underline dotted; }
+    .место-1 { background:#dcfce7; } .место-н { background:#fef9c3; } .место-0 { background:#fee2e2; }
+    .граница { color:#9ca3af; font-size:.8rem; white-space:pre-wrap; background:#f9fafb;
+               border:1px dashed #d1d5db; border-radius:6px; padding:6px 8px; margin:6px 0; }
+    .текст-чанка { white-space:pre-wrap; font-size:.86rem; line-height:1.45; border:2px solid #2563eb;
+                   border-radius:6px; padding:8px 10px; max-height:420px; overflow-y:auto; }
+    .ошибка { background:#fde8e8; color:#9b1c1c; padding:6px 10px; border-radius:6px; font-size:.84rem; }
+    .победа { font-weight:600; color:#047857; }
+    details summary { cursor:pointer; font-weight:600; font-size:.9rem; }
+    .справка { font-size:.84rem; line-height:1.5; color:#374151; }
+    mark { background:#fde68a; padding:0 1px; }
+  </style>
+</head>
+<body>
+  <p class="мета"><a href="/">← к агенту</a></p>
+  <h1>Индекс документов — чанки, эмбеддинги, две стратегии</h1>
+  <p class="idea">
+    День 21 открывает неделю RAG. Документы организации — договоры связи (PDF с текстом и
+    сканы), бюджетные формы по ИТ (Excel) — режутся на <b>чанки</b>, для каждого считается
+    <b>вектор</b> локальной моделью <code>bge-m3</code> в Ollama, и всё ложится в
+    <code>index/docs.db</code> вместе с <b>паспортом</b> чанка: файл, раздел, страницы, пункт,
+    <code>chunk_id</code>. Стратегий две: <b>«фикс»</b> режет по числу токенов с перекрытием и
+    структуры не видит, <b>«структура»</b> режет по разделам договора, листам таблиц и главам.
+    Поиск ниже спрашивает оба индекса одним вектором запроса — видно, чем они отличаются, а
+    «Сравнить стратегии» считает это числами на эталонных вопросах.
+  </p>
+
+  <details class="карточка">
+    <summary>❓ Справка по форме</summary>
+    <div class="справка">
+      <p><b>Собрать индекс.</b> Галочки — какие стратегии пересобрать. «Размер» и «Перекрытие»
+        — в токенах, для «фикс»; «Предел раздела» — наибольший чанк «структуры» (раздел длиннее
+        делится по абзацам и пунктам, а не посреди слова). «Эмбеддер»: <code>ollama</code> —
+        bge-m3 локально, документы не покидают машину; <code>хэш</code> — мешок слов без модели,
+        для проверок. «Распознавать сканы» — страницы PDF без текстового слоя уходят в tesseract;
+        распознанное кэшируется в <code>index/ocr/</code>, второй раз ждать не придётся. Векторы
+        тоже кэшируются по тексту: повторная сборка с теми же чанками идёт секунды.</p>
+      <p><b>Документы.</b> Что извлечено из каждого файла: страницы, символы, сколько страниц
+        прошло OCR, сколько чанков дала каждая стратегия и что пропущено.</p>
+      <p><b>Поиск.</b> Запрос своими словами. Слева «структура», справа «фикс» — по одному и
+        тому же вектору запроса. У находки: косинусное сходство, файл, раздел, пункт, страницы.
+        Оранжевая пометка «поперёк» — чанк задел несколько разделов. Нажмите на
+        <code>chunk_id</code> — откроется чанк целиком, а серым будут показаны конец
+        предыдущего и начало следующего: видно, где прошла граница.</p>
+      <p><b>Сравнение.</b> Две половины. «Как нарезано» — число и размеры чанков, избыточность
+        от перекрытия, чанки поперёк разделов, абзацы и строки таблиц, разрезанные границей.
+        «Как находится» — эталонные вопросы из <code>rag-questions.json</code>: попадание
+        засчитывается чанку нужного документа, где опорная фраза ответа есть целиком.
+        hit@k — доля вопросов с попаданием в первых k, MRR — среднее 1/место. Отчёт пишется и
+        файлом <code>RAG-COMPARISON.md</code>.</p>
+      <p>То же из консоли: <code>python cli.py --индексировать</code>,
+        <code>--найти-в-документах «…»</code>, <code>--чанк ID</code>,
+        <code>--сравнить-стратегии</code>. Агенту индекс доступен как MCP-сервер
+        <code>docs</code>: включите на главной «Давать инструменты модели» и впишите
+        <code>docs</code>.</p>
+    </div>
+  </details>
+
+  <div class="карточка" id="состояние-карточка">
+    <div id="состояние">Загрузка…</div>
+  </div>
+
+  <div class="карточка">
+    <h2>Собрать индекс</h2>
+    <div class="ряд">
+      <label class="флажок"><input type="checkbox" class="стратегия" value="фикс" checked> «фикс»</label>
+      <label class="флажок"><input type="checkbox" class="стратегия" value="структура" checked> «структура»</label>
+      <label>Размер, ток.<input type="number" id="размер" value="500" min="50" max="4000"></label>
+      <label>Перекрытие, ток.<input type="number" id="перекрытие" value="75" min="0" max="2000"></label>
+      <label>Предел раздела, ток.<input type="number" id="макс" value="700" min="100" max="4000"></label>
+      <label>Эмбеддер
+        <select id="эмбеддер">
+          <option value="ollama">ollama:bge-m3 — локально</option>
+          <option value="хэш">хэш — без модели</option>
+        </select>
+      </label>
+      <label class="флажок"><input type="checkbox" id="ocr" checked> распознавать сканы</label>
+      <button id="собрать" class="главная">Собрать индекс</button>
+    </div>
+    <div id="работа"></div>
+  </div>
+
+  <div class="карточка">
+    <h2>Документы <span class="мета" id="документы-итог"></span></h2>
+    <div id="документы"></div>
+  </div>
+
+  <div class="карточка">
+    <h2>Поиск по индексу</h2>
+    <div class="ряд">
+      <label style="flex:1">Запрос
+        <input id="запрос" placeholder="например: до какого числа платить за связь">
+      </label>
+      <label>Где
+        <select id="где">
+          <option value="обе">обе стратегии рядом</option>
+          <option value="структура">только «структура»</option>
+          <option value="фикс">только «фикс»</option>
+        </select>
+      </label>
+      <label>Сколько<input type="number" id="сколько" value="3" min="1" max="20"></label>
+      <button id="искать" class="главная">Найти</button>
+    </div>
+    <div id="находки"></div>
+    <div id="чанк"></div>
+  </div>
+
+  <div class="карточка">
+    <h2>Сравнение стратегий</h2>
+    <div class="ряд">
+      <button id="сравнить" class="главная">Сравнить стратегии</button>
+      <span class="мета">статистика нарезки и эталонные вопросы; результат — и в RAG-COMPARISON.md</span>
+    </div>
+    <div id="сравнение"></div>
+  </div>
+
+<script>
+let состояние = null;
+let опрос = null;
+
+function экранировать(т) {
+  return String(т ?? '').replace(/[&<>"']/g, с => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[с]));
+}
+
+function число(n) { return Number(n || 0).toLocaleString('ru-RU'); }
+
+async function запрос(путь, тело) {
+  const ответ = await fetch(путь, тело === undefined ? {} : {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(тело)});
+  const данные = await ответ.json().catch(() => ({error: 'сервер ответил не JSON'}));
+  if (!ответ.ok) throw new Error(данные.error || ответ.statusText);
+  return данные;
+}
+
+async function обновить() {
+  try {
+    состояние = await запрос('/api/rag');
+  } catch (e) {
+    document.getElementById('состояние').innerHTML = `<div class="ошибка">${экранировать(e.message)}</div>`;
+    return;
+  }
+  нарисоватьСостояние();
+  нарисоватьРаботу();
+  нарисоватьДокументы();
+  нарисоватьСравнение();
+  const идёт = состояние.работа && !состояние.работа.готово;
+  if (идёт && !опрос) опрос = setInterval(обновить, 1000);
+  if (!идёт && опрос) { clearInterval(опрос); опрос = null; }
+}
+
+function нарисоватьСостояние() {
+  const с = состояние;
+  const э = с.эмбеддер, о = с.ocr;
+  const индексы = с.индексы.map(и =>
+    `<div>«${экранировать(и.стратегия)}» — чанков <b>${число(и.чанков)}</b>, документов ${и.документов},
+      токенов ${число(и.токенов)}; <code>${экранировать(и.эмбеддер)}</code>, вектор ${и.размерность};
+      собран ${экранировать(и.создан.replace('T', ' '))}
+      <span class="мета">(${Object.entries(и.параметры).map(([к, з]) => `${к} ${з}`).join(', ')})</span></div>`).join('');
+  document.getElementById('состояние').innerHTML = `
+    <div style="margin-bottom:6px">
+      <span class="плашка ${э.готов ? 'ок' : 'нет'}">эмбеддер ${экранировать(э.имя)}: ${э.готов ? 'готов' : 'недоступен'}</span>
+      <span class="плашка ${о.готов ? 'ок' : 'нет'}">OCR: ${о.готов ? 'tesseract готов' : 'недоступен'}</span>
+      <span class="мета">документы: <code>${экранировать(с.каталог)}</code> · индекс: <code>${экранировать(с.база)}</code></span>
+    </div>
+    ${э.готов ? '' : `<div class="мета">⚠ ${экранировать(э.почему)}</div>`}
+    ${о.готов ? '' : `<div class="мета">⚠ ${экранировать(о.почему)}</div>`}
+    ${индексы || '<div class="мета">Индекс ещё не собран.</div>'}`;
+  const эмбеддер = document.getElementById('эмбеддер');
+  if (!эмбеддер.dataset.тронут && с.индексы.length) {
+    эмбеддер.value = с.индексы[0].эмбеддер.startsWith('ollama') ? 'ollama' : 'хэш';
+  }
+}
+
+function нарисоватьРаботу() {
+  const р = состояние.работа;
+  const место = document.getElementById('работа');
+  const кнопки = ['собрать', 'сравнить'].map(id => document.getElementById(id));
+  const идёт = р && !р.готово;
+  кнопки.forEach(к => к.disabled = идёт);
+  if (!р) { место.innerHTML = ''; return; }
+  const доля = р.всего ? Math.round(100 * р.сделано / р.всего) : (р.готово ? 100 : 0);
+  let итог = '';
+  if (р.готово && р.ошибка) итог = `<div class="ошибка">${экранировать(р.вид)} прервалась: ${экранировать(р.ошибка)}</div>`;
+  else if (р.готово && р.вид === 'сборка' && р.итог) {
+    const о = р.итог;
+    итог = `<div>Сборка готова за <b>${о.секунд} с</b> (извлечение ${о.секунд_извлечения} с): ` +
+      Object.entries(о.стратегии).map(([к, с]) =>
+        `«${экранировать(к)}» — чанков <b>${с.чанков}</b>, медиана ${с.медиана} ток., векторы ${с.секунд_векторов} с, из кэша ${с.из_кэша}`).join('; ') + '</div>';
+  } else if (р.готово && р.вид === 'сравнение') {
+    итог = `<div>Сравнение готово${р.итог && р.итог.лучшая ? `: по MRR выигрывает <span class="победа">«${экранировать(р.итог.лучшая)}»</span>` : ''}.</div>`;
+  }
+  место.innerHTML = `
+    <div class="мета" style="margin-top:8px">${экранировать(р.вид)}: ${экранировать(р.этап || 'старт')}
+      ${р.всего ? `— ${р.сделано}/${р.всего}` : ''} ${р.что ? '· ' + экранировать(р.что) : ''}
+      ${р.готово ? '' : ' …'}</div>
+    <div class="ход"><div style="width:${доля}%"></div></div>${итог}`;
+}
+
+function нарисоватьДокументы() {
+  const д = состояние.документы;
+  const стратегии = состояние.стратегии;
+  const итог = document.getElementById('документы-итог');
+  if (!д.length) {
+    document.getElementById('документы').innerHTML = '<div class="мета">Пока пусто — соберите индекс.</div>';
+    итог.textContent = '';
+    return;
+  }
+  const страниц = д.filter(x => x.вид === 'pdf').reduce((s, x) => s + x.страниц, 0);
+  const ocr = д.reduce((s, x) => s + x.распознано.length, 0);
+  const символов = д.reduce((s, x) => s + x.символов, 0);
+  итог.textContent = `${д.length} файлов · страниц PDF ${страниц} (OCR ${ocr}) · символов ${число(символов)}`;
+  document.getElementById('документы').innerHTML = `<table><tr><th>файл</th><th>вид</th>
+    <th>стр./листов</th><th>символов</th><th>OCR стр.</th>
+    ${стратегии.map(с => `<th>чанков «${с}»</th>`).join('')}<th>замечания</th></tr>
+    ${д.map(x => `<tr><td>${экранировать(x.источник)}${x.название && !x.источник.startsWith(x.название) ?
+        `<div class="мета">${экранировать(x.название)}</div>` : ''}</td>
+      <td>${экранировать(x.вид)}</td><td class="ч">${x.страниц}</td><td class="ч">${число(x.символов)}</td>
+      <td class="ч">${x.распознано.length || ''}</td>
+      ${стратегии.map(с => `<td class="ч">${x.чанков[с] ?? '—'}</td>`).join('')}
+      <td class="мета">${x.замечания.map(экранировать).join('<br>')}</td></tr>`).join('')}</table>`;
+}
+
+function подсветить(текст, запрос) {
+  let html = экранировать(текст);
+  const основы = [...new Set(запрос.toLowerCase().split(/[^0-9a-zа-яё]+/i).filter(с => с.length > 3).map(с => с.slice(0, 5)))];
+  for (const о of основы) {
+    html = html.replace(new RegExp(`(${о.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[0-9a-zа-яё]*)`, 'gi'), '<mark>$1</mark>');
+  }
+  return html;
+}
+
+function находкаHTML(н, запрос) {
+  const поперёк = н.sections.length > 1
+    ? `<div class="поперёк">поперёк: ${н.sections.map(экранировать).join(' | ')}</div>` : '';
+  return `<div class="находка">
+    <div class="паспорт"><span class="оценка">${н.rank}. [${н.score.toFixed(3)}]</span>
+      <b>${экранировать(н.source)}</b> · ${экранировать(н.section)}${н.clause ? ', п. ' + экранировать(н.clause) : ''}
+      ${н.pages ? '· стр. ' + экранировать(н.pages) : ''} ·
+      <code class="чанк-ид" data-ид="${экранировать(н.chunk_id)}">${экранировать(н.chunk_id)}</code>
+      <span class="мета">${н.tokens} ток.${н.ocr ? ', OCR' : ''}</span></div>
+    ${поперёк}<div class="текст">${подсветить(н.text, запрос)}</div></div>`;
+}
+
+async function искать() {
+  const запросТекст = document.getElementById('запрос').value.trim();
+  const место = document.getElementById('находки');
+  document.getElementById('чанк').innerHTML = '';
+  if (!запросТекст) return;
+  место.innerHTML = '<div class="мета">Ищу…</div>';
+  const эмбеддер = состояние && состояние.индексы.length ? состояние.индексы[0].эмбеддер : '';
+  try {
+    const о = await запрос('/api/rag/search', {query: запросТекст, strategy: document.getElementById('где').value,
+      limit: +document.getElementById('сколько').value, embedder: эмбеддер});
+    const колонки = Object.entries(о.results).sort(([а], [б]) => а === 'структура' ? -1 : б === 'структура' ? 1 : 0);
+    место.innerHTML = `<div class="мета" style="margin:6px 0">«${экранировать(о.query)}» · ${экранировать(о.embedder)}</div>
+      <div class="${колонки.length > 1 ? 'две' : ''}">${колонки.map(([с, находки]) =>
+        `<div class="${с === 'фикс' ? 'фикс' : 'структура'}" data-стратегия="${экранировать(с)}"><h2>«${экранировать(с)}»</h2>
+          ${находки.length ? находки.map(н => находкаHTML(н, о.query)).join('') : '<div class="мета">ничего</div>'}</div>`).join('')}</div>`;
+  } catch (e) {
+    место.innerHTML = `<div class="ошибка">${экранировать(e.message)}</div>`;
+  }
+}
+
+async function показатьЧанк(ид) {
+  const место = document.getElementById('чанк');
+  try {
+    const о = await запрос('/api/rag/chunk/' + encodeURIComponent(ид));
+    const ч = о.chunk;
+    место.innerHTML = `<h2 style="margin-top:12px">Чанк <code>${экранировать(ч.chunk_id)}</code>
+        <span class="мета">«${экранировать(ч.strategy)}» · ${экранировать(ч.source)} · ${экранировать(ч.section)}
+        ${ч.pages ? '· стр. ' + экранировать(ч.pages) : ''} · ${ч.tokens} ток. · №${ч.position}</span></h2>
+      ${о.previous ? `<div class="граница">…конец предыдущего (${экранировать(о.previous.chunk_id)}): ${экранировать(о.previous.text.slice(-240))}</div>` : ''}
+      <div class="текст-чанка">${экранировать(ч.text)}</div>
+      ${о.next ? `<div class="граница">начало следующего (${экранировать(о.next.chunk_id)}): ${экранировать(о.next.text.slice(0, 240))}…</div>` : ''}`;
+    место.scrollIntoView({behavior: 'smooth', block: 'start'});
+  } catch (e) {
+    место.innerHTML = `<div class="ошибка">${экранировать(e.message)}</div>`;
+  }
+}
+
+function нарисоватьСравнение() {
+  const о = состояние.сравнение;
+  const место = document.getElementById('сравнение');
+  if (!о) { место.innerHTML = '<div class="мета">Сравнения ещё не было.</div>'; return; }
+  const с = Object.keys(о.нарезка);
+  const н = о.нарезка;
+  const строка = (имя, f) => `<tr><td>${имя}</td>${с.map(к => `<td class="ч">${f(н[к])}</td>`).join('')}</tr>`;
+  const проц = x => Math.round(100 * x) + '%';
+  let html = `<div class="мета" style="margin:8px 0">Собрано ${экранировать(о.когда.replace('T', ' '))} ·
+    <code>${экранировать(о.эмбеддер)}</code> · документов ${о.документов}, страниц PDF ${о.страниц}
+    (OCR ${о.распознано_страниц}), листов ${о.листов}, символов ${число(о.символов)}</div>
+    <div class="две"><div><h2>Как нарезано</h2><table><tr><th>показатель</th>${с.map(к => `<th>«${к}»</th>`).join('')}</tr>
+    <tr><td>параметры</td>${с.map(к => `<td class="ч мета">${Object.entries(о.параметры[к]).map(([п, з]) => `${п} ${з}`).join(', ')}</td>`).join('')}</tr>
+    ${строка('чанков', х => х.чанков)}
+    ${строка('размер: мин / медиана / p90 / макс', х => `${х.мин} / ${х.медиана} / ${х.p90} / ${х.макс}`)}
+    ${строка('избыточность от перекрытия', х => х.избыточность.toFixed(2))}
+    ${строка('чанков поперёк разделов', х => `${х.поперёк_разделов} (${проц(х.доля_поперёк)})`)}
+    ${строка('чанков с середины фразы', х => `${х.с_середины_фразы} (${проц(х.доля_с_середины)})`)}
+    ${строка('абзацев и строк, разрезанных границей', х => `${х.разорвано_блоков} из ${х.блоков} (${проц(х.доля_разорванных)})`)}
+    </table></div>`;
+  const п = о.поиск;
+  if (п) {
+    const стр = Object.keys(п.стратегии);
+    const лучшая = стр.reduce((а, б) => (п.стратегии[б].mrr > п.стратегии[а].mrr ? б : а), стр[0]);
+    html += `<div><h2>Как находится <span class="мета">${п.вопросов} эталонных вопросов</span></h2>
+      <table><tr><th>метрика</th>${стр.map(к => `<th>«${к}»</th>`).join('')}</tr>
+      ${Object.keys(п.стратегии[стр[0]]).map(м => `<tr><td>${м}</td>${стр.map(к =>
+        `<td class="ч ${к === лучшая && м === 'mrr' ? 'победа' : ''}">${п.стратегии[к][м].toFixed(2)}</td>`).join('')}</tr>`).join('')}
+      </table><div class="мета" style="margin-top:4px">Попадание — чанк нужного документа с опорной фразой ответа целиком.
+      По MRR лучше <span class="победа">«${экранировать(лучшая)}»</span>.</div></div>`;
+  }
+  html += '</div>';
+  if (п) {
+    const стр = Object.keys(п.стратегии);
+    const клетка = м => м === 0 ? 'место-0' : м === 1 ? 'место-1' : 'место-н';
+    html += `<details style="margin-top:10px" open><summary>По вопросам</summary><table style="margin-top:6px">
+      <tr><th>#</th><th>вопрос</th><th>опорная фраза</th>${стр.map(к => `<th>место «${к}»</th>`).join('')}</tr>
+      ${п.вопросы.map(в => `<tr><td>${экранировать(в.id)}</td><td>${экранировать(в.вопрос)}</td>
+        <td class="мета">${экранировать(в.маркеры[0])}</td>
+        ${стр.map(к => `<td class="ч ${клетка(в.места[к].место)}">${в.места[к].место || '—'}</td>`).join('')}</tr>`).join('')}
+      </table></details>`;
+  }
+  место.innerHTML = html;
+}
+
+document.getElementById('эмбеддер').addEventListener('change', e => { e.target.dataset.тронут = '1'; });
+
+document.getElementById('собрать').addEventListener('click', async () => {
+  const стратегии = [...document.querySelectorAll('.стратегия:checked')].map(х => х.value);
+  try {
+    await запрос('/api/rag/build', {strategies: стратегии, size: +document.getElementById('размер').value,
+      overlap: +document.getElementById('перекрытие').value, max: +document.getElementById('макс').value,
+      embedder: document.getElementById('эмбеддер').value, ocr: document.getElementById('ocr').checked});
+  } catch (e) {
+    document.getElementById('работа').innerHTML = `<div class="ошибка">${экранировать(e.message)}</div>`;
+    return;
+  }
+  обновить();
+});
+
+document.getElementById('сравнить').addEventListener('click', async () => {
+  const эмбеддер = состояние && состояние.индексы.length ? состояние.индексы[0].эмбеддер : '';
+  try {
+    await запрос('/api/rag/compare', {embedder: эмбеддер});
+  } catch (e) {
+    document.getElementById('работа').innerHTML = `<div class="ошибка">${экранировать(e.message)}</div>`;
+    return;
+  }
+  обновить();
+});
+
+document.getElementById('искать').addEventListener('click', искать);
+document.getElementById('запрос').addEventListener('keydown', e => { if (e.key === 'Enter') искать(); });
+document.getElementById('находки').addEventListener('click', e => {
+  const ид = e.target.closest('.чанк-ид');
+  if (ид) показатьЧанк(ид.dataset.ид);
+});
+
+обновить();
+</script>
+</body>
+</html>
