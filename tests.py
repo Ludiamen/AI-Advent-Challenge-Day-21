@@ -7404,14 +7404,22 @@ class МаршрутСерверов(unittest.TestCase):
         # проверки «неготовый сервер отсеивается» переставали значить то, что в
         # них написано. Поэтому файл серверов читается из отдельного каталога с
         # копией .env без этой переменной: остальные значения остаются как есть.
+        #
+        # Настоящий трекер («tracker-real») — наоборот: правила «по просьбе» и
+        # «замещает» проверяются на нём, а готов он только с TRACKER_TOKEN и
+        # TRACKER_ORG. В свежем клоне без .env сервер отсеивался как неготовый,
+        # и три теста падали не из-за маршрута, а из-за чужих секретов. Тесты к
+        # трекеру не подключаются, поэтому здесь всегда заглушки.
         каталог = tempfile.mkdtemp(prefix="маршрут-серверы-")
         shutil.copy(os.path.join(КОРЕНЬ_ДНЯ, "mcp-servers.json"), каталог)
         свой = os.path.join(КОРЕНЬ_ДНЯ, ".env")
-        if os.path.exists(свой):
-            строки = [с for с in pathlib.Path(свой).read_text(encoding="utf-8").splitlines()
-                      if not с.strip().startswith("GITHUB_TOKEN")]
-            pathlib.Path(os.path.join(каталог, ".env")).write_text(
-                "\n".join(строки), encoding="utf-8")
+        лишние = ("GITHUB_TOKEN", "TRACKER_TOKEN", "TRACKER_ORG")
+        строки = [с for с in (pathlib.Path(свой).read_text(encoding="utf-8").splitlines()
+                              if os.path.exists(свой) else [])
+                  if not с.strip().startswith(лишние)]
+        строки += ["TRACKER_TOKEN=заглушка-для-тестов", "TRACKER_ORG=заглушка-для-тестов"]
+        pathlib.Path(os.path.join(каталог, ".env")).write_text(
+            "\n".join(строки), encoding="utf-8")
         прежний = os.environ.pop("GITHUB_TOKEN", None)
         try:
             return amcp.load(os.path.join(каталог, "mcp-servers.json"))
